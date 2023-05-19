@@ -18,6 +18,10 @@ class ACTIONROGUELIKE_API ASCharacter : public ACharacter
 {
 	GENERATED_BODY()
 
+protected:
+	UPROPERTY(EditAnywhere)
+	TSubclassOf<AActor> ProjectileClass;
+
 public:
 	ASCharacter();
 
@@ -31,12 +35,20 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Input|Actions")
 	UInputAction* MoveAction;
+	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Input|Actions")
 	UInputAction* LookAction;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Input|Actions")
+	UInputAction* PrimaryAttackAction;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Input|Actions")
+	UInputAction* JumpAction;
 	/******** Actions *****/
+	
 	void Move(const FInputActionValue& Value);
 	void Look(const FInputActionValue& Value);
+	void PrimaryAttack(const FInputActionValue& Value);
 
 	/****************************************************/
 	UPROPERTY(VisibleAnywhere)
