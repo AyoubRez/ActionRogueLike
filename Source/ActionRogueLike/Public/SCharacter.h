@@ -7,6 +7,7 @@
 #include "GameFramework/Character.h"
 #include "SCharacter.generated.h"
 
+class USInteractionComponent;
 struct FInputActionValue;
 class UInputAction;
 class USpringArmComponent;
@@ -19,8 +20,15 @@ class ACTIONROGUELIKE_API ASCharacter : public ACharacter
 	GENERATED_BODY()
 
 protected:
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere, Category="Attack")
 	TSubclassOf<AActor> ProjectileClass;
+
+	UPROPERTY(EditAnywhere, Category="Attack")
+	UAnimMontage* AttackAnim;
+	
+	FTimerHandle TimerHandle_PrimaryAttack;
+
+	void PrimaryAttack_TimeElapsed();
 
 public:
 	ASCharacter();
@@ -35,20 +43,26 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Input|Actions")
 	UInputAction* MoveAction;
-	
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Input|Actions")
 	UInputAction* LookAction;
-	
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Input|Actions")
 	UInputAction* PrimaryAttackAction;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Input|Actions")
 	UInputAction* JumpAction;
-	/******** Actions *****/
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Input|Actions")
+	UInputAction* InteractAction;
 	
+	/******** Actions *****/
+
 	void Move(const FInputActionValue& Value);
 	void Look(const FInputActionValue& Value);
+	
 	void PrimaryAttack(const FInputActionValue& Value);
+	void PrimaryInteract(const FInputActionValue& Value);
 
 	/****************************************************/
 	UPROPERTY(VisibleAnywhere)
@@ -56,6 +70,13 @@ protected:
 
 	UPROPERTY(VisibleAnywhere)
 	UCameraComponent* CameraComp;
+
+	/********** Components ****/
+	UPROPERTY(VisibleAnywhere)
+	USInteractionComponent* InteractionComp;
+
+
+	/***************************************/
 
 public:
 	virtual void Tick(float DeltaTime) override;
