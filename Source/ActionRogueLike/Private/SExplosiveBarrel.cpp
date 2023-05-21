@@ -25,16 +25,36 @@ ASExplosiveBarrel::ASExplosiveBarrel()
 void ASExplosiveBarrel::BeginPlay()
 {
 	Super::BeginPlay();
-	Mesh->OnComponentHit.AddDynamic(this, &ASExplosiveBarrel::OnHit);
+}
+
+void ASExplosiveBarrel::Explode()
+{
+	RadialForceComp->FireImpulse();
 }
 
 void ASExplosiveBarrel::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp,
                               FVector NormalImpulse, const FHitResult& Hit)
 {
-	if (ASMagicProjectile* MagicProjectile = Cast<ASMagicProjectile>(OtherActor))
+	UE_LOG(LogTemp, Log, TEXT("OnHit on Explosive Barrel"));
+	UE_LOG(LogTemp, Warning, TEXT("OtherActor : %s at game time : %f"), *GetNameSafe(OtherActor),
+	       GetWorld()->TimeSeconds);
+	FString CombinedString = FString::Printf(TEXT("Hit at Location %s"),*Hit.ImpactPoint.ToString());
+	DrawDebugString(GetWorld(),Hit.ImpactPoint,CombinedString, nullptr,FColor::Yellow,2.f,true);
+	if (Cast<ASMagicProjectile>(OtherActor))
 	{
-		RadialForceComp->FireImpulse();
+		Explode();
 	}
+}
+
+void ASExplosiveBarrel::Interact_Implementation(APawn* InstigatorPawn)
+{
+	Explode();
+}
+
+void ASExplosiveBarrel::PostInitializeComponents()
+{
+	Super::PostInitializeComponents();
+	Mesh->OnComponentHit.AddDynamic(this, &ASExplosiveBarrel::OnHit);
 }
 
 

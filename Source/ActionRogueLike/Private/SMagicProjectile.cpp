@@ -2,35 +2,49 @@
 
 
 #include "SMagicProjectile.h"
+
+#include "SAttributesComponent.h"
 #include "Components/SphereComponent.h"
-#include "GameFramework/ProjectileMovementComponent.h"
-#include "Particles/ParticleSystemComponent.h"
 
 
 ASMagicProjectile::ASMagicProjectile()
 {
 	PrimaryActorTick.bCanEverTick = true;
 
-	SphereComp = CreateDefaultSubobject<USphereComponent>(TEXT("SphereComp"));
-	SetRootComponent(SphereComp);
-	//SphereComp->SetCollisionObjectType(ECC_WorldDynamic);
-	SphereComp->SetCollisionProfileName("Projectile");
+	SphereComp->OnComponentBeginOverlap.AddDynamic(this, &ASMagicProjectile::OnActorOverlap);
+}
 
-	EffectComp = CreateDefaultSubobject<UParticleSystemComponent>(TEXT("EffectComp"));
-	EffectComp->SetupAttachment(RootComponent);
+void ASMagicProjectile::Explode_Implementation()
+{
+	Super::Explode_Implementation();
+}
 
-	MovementComp = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("MovementComp"));
-	MovementComp->InitialSpeed = 10000.0f;
-	MovementComp->bRotationFollowsVelocity = true;
-	MovementComp->bInitialVelocityInLocalSpace = true;
+void ASMagicProjectile::OnActorOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
+                                       UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep,
+                                       const FHitResult& SweepResult)
+{
+	if (OtherActor && OtherActor != GetInstigator())
+	{
+		if (USAttributesComponent* AttributesComp = Cast<USAttributesComponent>(
+			OtherActor->GetComponentByClass(USAttributesComponent::StaticClass())))
+		{
+			AttributesComp->ApplyHealthChange(DamageAmount);
+			Explode();
+		}
+	}
 }
 
 void ASMagicProjectile::BeginPlay()
 {
 	Super::BeginPlay();
+	SphereComp->IgnoreActorWhenMoving(GetInstigator(), true);
 }
 
-void ASMagicProjectile::Tick(float DeltaTime)
+void ASMagicProjectile::OnActorHit(UPrimitiveComponent* HitComponent, AActor* OtherActor,
+                                   UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
-	Super::Tick(DeltaTime);
+	if (OtherActor != GetInstigator())
+	{
+		Super::OnActorHit(HitComponent, OtherActor, OtherComp, NormalImpulse, Hit);
+	}
 }

@@ -6,13 +6,14 @@
 #include "Camera/CameraComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "EnhancedInputComponent.h"
+#include "SAttributesComponent.h"
 #include "SInteractionComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "Kismet/GameplayStatics.h"
 
 
-
-ASCharacter::ASCharacter()
+ASCharacter::ASCharacter(): AttackAnimDelay(0.2f), HandeSocketName("Muzzle_01"),TimeToHitParamName("TimeToHit")
 {
 	PrimaryActorTick.bCanEverTick = true;
 
@@ -26,8 +27,15 @@ ASCharacter::ASCharacter()
 	bUseControllerRotationYaw = false;
 	GetCharacterMovement()->bOrientRotationToMovement = true;
 
-
 	InteractionComp = CreateDefaultSubobject<USInteractionComponent>(TEXT("InteractionComp"));
+	AttributesComp = CreateDefaultSubobject<USAttributesComponent>(TEXT("AttributesComp"));
+}
+
+void ASCharacter::PostInitializeComponents()
+{
+	Super::PostInitializeComponents();
+
+	AttributesComp->OnHealthChanged.AddDynamic(this, &ASCharacter::OnHealthChanged);
 }
 
 void ASCharacter::BeginPlay()
@@ -71,22 +79,66 @@ void ASCharacter::Look(const FInputActionValue& Value)
 	}
 }
 
-void ASCharacter::PrimaryAttack(const FInputActionValue& Value)
-{
-	PlayAnimMontage(AttackAnim);
-
-	GetWorldTimerManager().SetTimer(TimerHandle_PrimaryAttack, this, &ASCharacter::PrimaryAttack_TimeElapsed, 0.2f);
-	//GetWorldTimerManager().ClearTimer(TimerHandle_PrimaryAttack);
-
-}
 void ASCharacter::PrimaryAttack_TimeElapsed()
 {
-	const FVector HandLocation = GetMesh()->GetSocketLocation("Muzzle_01");
-	const FTransform SpawnTM = FTransform(GetControlRotation(), HandLocation);
-	FActorSpawnParameters SpawnParams;
-	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	SpawnProjectile(ProjectileClass);
+}
 
-	GetWorld()->SpawnActor<AActor>(ProjectileClass, SpawnTM, SpawnParams);
+void ASCharacter::SpellOneAttack_TimeElapsed()
+{
+	SpawnProjectile(SpellOneProjectileClass);
+}
+
+void ASCharacter::SpellTwoAttack_TimeElapsed()
+{
+	SpawnProjectile(SpellTwoProjectileClass);
+}
+
+void ASCharacter::SpawnProjectile(TSubclassOf<AActor> ClassToSpawn)
+{
+	if (ensureAlways(ClassToSpawn))
+	{
+		const FVector HandLocation = GetMesh()->GetSocketLocation(HandeSocketName);
+
+		FActorSpawnParameters SpawnParams;
+		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		SpawnParams.Instigator = this;
+
+		FCollisionShape Shape;
+		Shape.SetSphere(20.0f);
+
+		// Ignore Player
+		FCollisionQueryParams Params;
+		Params.AddIgnoredActor(this);
+
+		FCollisionObjectQueryParams ObjParams;
+		ObjParams.AddObjectTypesToQuery(ECC_WorldDynamic);
+		ObjParams.AddObjectTypesToQuery(ECC_WorldStatic);
+		ObjParams.AddObjectTypesToQuery(ECC_Pawn);
+
+		FVector TraceStart = CameraComp->GetComponentLocation();
+		// endpoint far into the look-at distance (not too far, still adjust somewhat towards crosshair on a miss)
+		FVector TraceEnd = CameraComp->GetComponentLocation() + (GetControlRotation().Vector() * 5000);
+
+		FHitResult HitResult;
+
+		if (GetWorld()->SweepSingleByObjectType(HitResult, TraceStart, TraceEnd, FQuat::Identity, ObjParams, Shape,
+		                                        Params))
+		{
+			// Override Trace End when hit 
+			TraceEnd = HitResult.ImpactPoint;
+		}
+
+		FRotator ProjRotation = FRotationMatrix::MakeFromX(TraceEnd - HandLocation).Rotator();
+		FTransform SpawnTM = FTransform(ProjRotation, HandLocation);
+		GetWorld()->SpawnActor<AActor>(ClassToSpawn, SpawnTM, SpawnParams);
+	}
+}
+
+void ASCharacter::StartAttackEffect()
+{
+	UGameplayStatics::SpawnEmitterAttached(CastingEffect, GetMesh(), HandeSocketName, FVector::ZeroVector,
+	                                       FRotator::ZeroRotator, EAttachLocation::SnapToTarget);
 }
 
 void ASCharacter::PrimaryInteract(const FInputActionValue& Value)
@@ -97,15 +149,54 @@ void ASCharacter::PrimaryInteract(const FInputActionValue& Value)
 	}
 }
 
+void ASCharacter::SpellOneAttack(const FInputActionValue& Value)
+{
+	PlayAnimMontage(SpellOneAttackAnim);
+	GetWorldTimerManager().SetTimer(TimerHandle_SpellOneAttack, this, &ASCharacter::SpellOneAttack_TimeElapsed,
+	                                AttackAnimDelay);
+}
+
+void ASCharacter::SpellTwoAttack(const FInputActionValue& Value)
+{
+	PlayAnimMontage(SpellTwoAttackAnim);
+	StartAttackEffect();
+	GetWorldTimerManager().SetTimer(TimerHandle_SpellTwoAttack, this, &ASCharacter::SpellTwoAttack_TimeElapsed,
+	                                AttackAnimDelay);
+}
+
+void ASCharacter::PrimaryAttack(const FInputActionValue& Value)
+{
+	PlayAnimMontage(AttackAnim);
+	StartAttackEffect();
+	GetWorldTimerManager().SetTimer(TimerHandle_PrimaryAttack, this, &ASCharacter::PrimaryAttack_TimeElapsed,
+	                                AttackAnimDelay);
+	//GetWorldTimerManager().ClearTimer(TimerHandle_PrimaryAttack);
+}
+
 #pragma endregion
 
-// Called every frame
+void ASCharacter::OnHealthChanged(AActor* InstigatorActor, USAttributesComponent* OwningComp, float NewHealth,
+                                  float Delta)
+{
+	if (Delta < 0.0f)
+	{
+		GetMesh()->SetScalarParameterValueOnMaterials(TimeToHitParamName, GetWorld()->TimeSeconds);
+	}
+	if (NewHealth <= 0.f && Delta < 0.f)
+	{
+		if (APlayerController* PC = Cast<APlayerController>(GetController()))
+		{
+			DisableInput(PC);
+		}
+	}
+}
+
+
 void ASCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 }
 
-// Called to bind functionality to input
 void ASCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
 	if (UEnhancedInputComponent* EnhancedInputComponent = CastChecked<UEnhancedInputComponent>(PlayerInputComponent))
@@ -117,6 +208,13 @@ void ASCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponen
 		/**** Primary Attack */
 		EnhancedInputComponent->BindAction(PrimaryAttackAction, ETriggerEvent::Triggered, this,
 		                                   &ASCharacter::PrimaryAttack);
+		/**** Spell One */
+		EnhancedInputComponent->BindAction(SpellOneAction, ETriggerEvent::Triggered, this,
+		                                   &ASCharacter::SpellOneAttack);
+
+		/**** Spell Two */
+		EnhancedInputComponent->BindAction(SpellTwoAction, ETriggerEvent::Triggered, this,
+		                                   &ASCharacter::SpellTwoAttack);
 
 		/**** Jump */
 		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &ACharacter::Jump);
